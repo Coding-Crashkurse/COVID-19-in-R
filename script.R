@@ -67,19 +67,28 @@ weather_df <- weather_df %>%
 by_month <- df %>%
   group_by(month = floor_date(date, "month")) %>%
   summarise_if(is.numeric, sum, na.rm = TRUE)
-by_month <- by_month[4:11,]
+by_month <- by_month[4:11,] %>%
+  select(-month)
 
-weather_df <- weather_df[4:11, ]
+weather_df <- weather_df[4:11, ] %>%
+  select(-date)
+
 
 resultlist = list()
 
-for(col in seq_along(df)) {
-  resultlist[[col]] <- cor.test(by_month[[col]], weather_df[[col]], method = "pearson")
+for(col in seq_along(by_month)) {
+  resultlist[[col]] <- as.numeric(cor.test(by_month[[col]], weather_df[[col]], method = "pearson")$estimate)
 }
 
-by_month$month
+sort(unlist(resultlist))
 
-cor.test(df$Afghanistan, weather_df$Afghanistan)
+
+testres <- cor.test(by_month[[col]], weather_df[[col]])
+x <- as.numeric(testres$estimate)
+
+
+data.table::rbindlist(resultlist)
+
 
 #### EDA und Vis
 
