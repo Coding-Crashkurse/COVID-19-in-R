@@ -6,6 +6,8 @@ library(readr)
 library(readxl)
 library(lubridate)
 library(ggplot2)
+library(countrycode)
+
 
 # Read in all data
 
@@ -16,29 +18,68 @@ tf = tempfile(fileext = ".xls")
 curl::curl_download(weather_data_link, tf)
 
 df <- data.table::fread(cases_global_link)
-weather_df <- readxl::read_excel(tf, sheet = 4)
-
-## EDA
-
-globalcolnames <- colnames(df)[5:length(colnames(df))]
-
 df <- df %>%
   select(-c(`Province/State`, Lat, Long)) %>%
   group_by(`Country/Region`) %>%
-  summarise_all(list(sum)) %>%
-  t() %>%
-  as.data.frame()
+  summarise_all(list(sum)) 
+colnames(df)[1] <- "country"
 
-colnames(df) <- df[1, ]
-df <- df[-1, ]
+weather_df <- readxl::read_excel(tf, sheet = 4)
 
-dates <- rownames(df)
+weather_df$country <- countrycode::countrycode(weather_df$ISO_3DIGIT, origin = "iso3c", destination = "country.name")
+weather_df <- weather_df %>%
+  select(-ISO_3DIGIT, -Annual_temp) %>%
+  select("country", everything())
 
-df <- data.frame(lapply(df, as.numeric))
+both <- intersect(df$country, weather_df$country)
+
 df <- df %>%
-  mutate_if(~is.numeric(.x), ~(.x - lag(.x, default = 0)))
-df$dates <- as.Date(dates, "%m/%d/%Y")
+  filter(country %in% both)
 
+weather_df <- weather_df %>%
+  filter(country %in% both)
+
+
+
+
+## EDA
+
+df <- df %>%
+  select(-country) %>%
+  t() %>%
+  as.data.frame() %>%
+  setNames(df$country) %>%
+  mutate_all(as.numeric) %>%
+  mutate(date = as.Date(colnames(df)[2:ncol(df)], "%m/%d/%Y")) %>%
+  mutate_if(~is.numeric(.x), ~(.x - lag(.x, default = 0))) %>%
+  mutate_if(is.numeric, scale)
+  
+
+weather_df <- weather_df %>%
+  select(-country) %>%
+  t() %>%
+  as.data.frame() %>%
+  setNames(weather_df$country) %>%
+  mutate_all(as.numeric) %>%
+  mutate(date = as.Date(colnames(weather_df)[2:ncol(weather_df )], "%m/%d/%Y")) %>%
+  mutate_if(is.numeric, scale)
+
+by_month <- df %>%
+  group_by(month = floor_date(date, "month")) %>%
+  summarise_if(is.numeric, sum, na.rm = TRUE)
+by_month <- by_month[4:11,]
+
+weather_df <- weather_df[4:11, ]
+
+resultlist = list()
+
+for(col in seq_along(df)) {
+  resultlist[[col]] <- cor.test(by_month[[col]], weather_df[[col]], method = "pearson")
+}
+
+by_month$month
+
+cor.test(df$Afghanistan, weather_df$Afghanistan)
 
 #### EDA und Vis
 
@@ -46,31 +87,10 @@ ggplot(data=df, aes(x=dates, y=Germany, group=1)) +
   geom_line(color="red")
 
 
-by_month <- df %>%
-  group_by(month = floor_date(dates, "month")) %>%
-  summarise_if(is.numeric, sum, na.rm = TRUE)
-by_month
 
-w_df <- weather_df %>%
-  select(-Annual_temp) %>%
-  t() %>%
-  as.data.frame()
-colnames(w_df) <- w_df[1, ]
-w_df <- w_df[-1, ]
-
-
-by_month$month[4:10]
-
-
-
-comparison <- data.frame(by_month$month[4:10], c(scale(as.numeric(w_df$DEU)[4:10])), c(scale(by_month$Germany[4:10]))) %>%
-  setnames(c("Date", "Temperature", "Cases"))
-
-cor.test(comparison$Temperature,comparison$Cases,method="spearman")
 
 comparison <- comparison %>%
   melt(id="Date")
-
 
 ggplot(data=comparison, aes(x=Date, y=value, colour=variable)) + geom_line()
 
