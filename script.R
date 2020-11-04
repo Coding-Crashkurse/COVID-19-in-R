@@ -18,6 +18,15 @@ tf = tempfile(fileext = ".xls")
 curl::curl_download(weather_data_link, tf)
 
 df <- data.table::fread(cases_global_link)
+
+
+
+# library(leaflet)
+# 
+# leaflet(data = df) %>% addTiles() %>%
+#   addMarkers(~Long, ~Lat, popup = ~as.character(`Country/Region`), label = ~as.character(Lat))
+
+
 df <- df %>%
   select(-c(`Province/State`, Lat, Long)) %>%
   group_by(`Country/Region`) %>%
@@ -40,10 +49,7 @@ weather_df <- weather_df %>%
   filter(country %in% both)
 
 
-
-
 ## EDA
-
 df <- df %>%
   select(-country) %>%
   t() %>%
@@ -66,40 +72,68 @@ weather_df <- weather_df %>%
 
 by_month <- df %>%
   group_by(month = floor_date(date, "month")) %>%
-  summarise_if(is.numeric, sum, na.rm = TRUE)
-by_month <- by_month[4:11,] %>%
-  select(-month)
+  summarise_if(is.numeric, sum, na.rm = TRUE) %>%
+  mutate_if(is.numeric, scale)
+by_month <- by_month[4:10,] %>%
+  select(-month) %>%
+  select(sort(current_vars()))
 
-weather_df <- weather_df[4:11, ] %>%
-  select(-date)
+weather_df <- weather_df[4:10, ] %>%
+  select(-date) %>%
+  select(sort(current_vars()))
 
+
+all(colnames(by_month) == colnames(weather_df))
 
 resultlist = list()
-
 for(col in seq_along(by_month)) {
   resultlist[[col]] <- as.numeric(cor.test(by_month[[col]], weather_df[[col]], method = "pearson")$estimate)
+  names(resultlist)[[col]] <- colnames(by_month)[[col]]
 }
 
-sort(unlist(resultlist))
 
 
-testres <- cor.test(by_month[[col]], weather_df[[col]])
-x <- as.numeric(testres$estimate)
+corr_df <- data.frame(unlist(resultlist), colnames(by_month)) %>%
+  setNames(c("corr", "country"))
+corr_df
+
+### Preserve df for merging
+
+lat_long <- data.table::fread(cases_global_link)
+colnames(lat_long)[2] <- "country"
 
 
-data.table::rbindlist(resultlist)
+merged_df <- merge(corr_df, lat_long, by="country") %>%
+  select(country, corr, Lat)
+merged_df <- merged_df[!duplicated(merged_df[, 1:2]), ] %>%
+  arrange(desc(corr)) %>%
+  mutate(Lat = as.numeric(scale(Lat)))
+
+lapply(merged_df, class)
+
+library(highcharter)
 
 
-#### EDA und Vis
-
-ggplot(data=df, aes(x=dates, y=Germany, group=1)) +
-  geom_line(color="red")
-
+highcharter::highchart() %>%
+  hc_add_series(data = merged_df$corr, type="line", color="red") %>%
+  hc_add_series(data = merged_df$Lat, type="line", color="blue")
 
 
+highchart() %>%
+  hc_add_series(data = by_month$Germany, type="line", color="red") %>%
+  hc_add_series(data = weather_df$Germany, type="line", color="blue")
 
-comparison <- comparison %>%
-  melt(id="Date")
 
-ggplot(data=comparison, aes(x=Date, y=value, colour=variable)) + geom_line()
+cor.test(by_month$Afghanistan, weather_df$Afghanistan , method = "pearson")$estimate
+cor.test(by_month$Germany, weather_df$Germany, method = "pearson")$estimate
+
+library(ggplot2)
+
+head(merged_df)
+
+ggplot(data = merged_df, aes(x = Lat , y = corr)) + 
+  geom_point(color='red') +
+  geom_smooth(method = "lm", se = FALSE, formula = y~x)
+
+cor.test(merged_df$corr, merged_df$Lat)
 
