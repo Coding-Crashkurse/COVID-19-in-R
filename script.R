@@ -83,6 +83,7 @@ weather_df <- weather_df[4:10, ] %>%
   select(sort(current_vars()))
 
 
+
 all(colnames(by_month) == colnames(weather_df))
 
 resultlist = list()
@@ -104,10 +105,12 @@ colnames(lat_long)[2] <- "country"
 
 
 merged_df <- merge(corr_df, lat_long, by="country") %>%
-  select(country, corr, Lat)
+  select(country, corr, Lat) %>%
+  filter(Lat < -20)
+
+merged_df
 merged_df <- merged_df[!duplicated(merged_df[, 1:2]), ] %>%
-  arrange(desc(corr)) %>%
-  mutate(Lat = as.numeric(scale(Lat)))
+  arrange(desc(corr))
 
 lapply(merged_df, class)
 
@@ -123,8 +126,13 @@ highchart() %>%
   hc_add_series(data = by_month$Germany, type="line", color="red") %>%
   hc_add_series(data = weather_df$Germany, type="line", color="blue")
 
+highchart() %>%
+  hc_add_series(data = by_month$Argentina, type="line", color="red") %>%
+  hc_add_series(data = weather_df$Argentina, type="line", color="blue")
+
 
 cor.test(by_month$Afghanistan, weather_df$Afghanistan , method = "pearson")$estimate
+
 cor.test(by_month$Germany, weather_df$Germany, method = "pearson")$estimate
 
 library(ggplot2)
