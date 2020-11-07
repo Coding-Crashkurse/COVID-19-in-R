@@ -35,7 +35,7 @@ res$iso3 <- df$iso3
 res <- res %>%
   select(iso3, everything())
 
-
+res
 
 
   
@@ -57,7 +57,6 @@ releativepop <- merged %>%
   mutate_if(~is.numeric(.x), ~(.x / pop) * 100000) %>%
   select(-pop)
 
-releativepop
 
 df_long <- pivot_longer(releativepop, cols = colnames(releativepop)[2:ncol(releativepop)], names_to = "sm", values_to = "value") %>%
   mutate(value = round(value, 4))
@@ -86,7 +85,7 @@ highchart(type = "map") %>%
   hc_motion(
     enabled = TRUE,
     axisLabel = "year",
-    labels = unique(as.character(df_long$sm)),
+    labels = unique(as.character(colnames(df))),
     series = 0,
     updateIterval = 5,
     magnet = list(
@@ -137,11 +136,11 @@ pop <- pop %>%
 pop
 
 merged <- merge(res, pop, by="iso3")
+
 releativepop <- merged %>%
   mutate_if(~is.numeric(.x), ~(.x / pop) * 1000000) %>%
   select(-pop)
 
-releativepop
 
 df_death_long <- pivot_longer(releativepop, cols = colnames(releativepop)[2:ncol(releativepop)], names_to = "sm", values_to = "value") %>%
   mutate(value = round(value, 4))
@@ -180,8 +179,5 @@ highchart(type = "map") %>%
   )
 
 
-# 
-df_death_long
-df_long
-df_death_long
+
 

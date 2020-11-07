@@ -1,0 +1,50 @@
+@import url("https://fonts.googleapis.com/css2?family=Lato&display=swap");
+
+html,
+body {
+  font-family: "Lato", sans-serif !important;
+}
+
+.nav-tabs-custom > .nav-tabs > li.active {
+  border-top-color: #aaca7c !important;
+}
+
+.nav-tabs-custom > .nav-tabs > li.header {
+  line-height: 35px;
+  padding: 0 10px;
+  font-size: 16px;
+  color: #444;
+}
+
+.skin-blue .main-header .navbar {
+  background-color: black !important;
+}
+
+.skin-blue .main-header .logo {
+  background-color: black !important;
+  color: #fff;
+  border-bottom: 0 solid transparent;
+}
+
+.skin-blue .main-header .navbar .sidebar-toggle {
+  display: none !important;
+}
+
+.box,
+.nav-tabs-custom {
+  transition: all 0.25s linear;
+  box-shadow: 0px 1px 2px 0px rgba(0, 0, 0, 0.4);
+}
+
+.box:hover,
+.nav-tabs-custom:hover {
+  box-shadow: -1px 10px 29px 0px rgba(0, 0, 0, 0.8);
+}
+
+/* Set Padding, renderUI with Highcharter removes it */
+
+[class*="col-"] {
+  float: left;
+  min-height: 1px;
+  padding-right: 15px !important;
+}
