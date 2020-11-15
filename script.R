@@ -6,36 +6,35 @@ library(ggplot2)
 library(lubridate)
 library(countrycode)
 
+# Import
 
-# Read in all data
-
-cases_global_link <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv" # auf Raw klicken
+cases_global_link <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
 weather_data_link <- "http://databank.worldbank.org/data/download/catalog/cckp_historical_data_0.xls"
 
-tf = tempfile(fileext = ".xls")
+
+df <- fread(cases_global_link)
+
+tf <- tempfile(fileext = ".xls")
 curl::curl_download(weather_data_link, tf)
-
-df <- data.table::fread(cases_global_link)
-
+weather_df <- readxl::read_excel(tf, sheet = 4)
 
 latitude_df <- df %>%
-  select(`Country/Region`, Lat) %>%
-  filter(!duplicated(`Country/Region`)) %>%
-  setNames(c("country", "lat"))
-  
+  select(`Country/Region`, Lat)
+
 
 df <- df %>%
-  select(-c(`Province/State`, Lat, Long)) %>%
+  select(-c(`Province/State`, Long, Lat)) %>%
   group_by(`Country/Region`) %>%
-  summarise_all(sum) 
+  summarise_all(sum)
 colnames(df)[1] <- "country"
 
-weather_df <- readxl::read_excel(tf, sheet = 4)
 
 weather_df$country <- countrycode::countrycode(weather_df$ISO_3DIGIT, origin = "iso3c", destination = "country.name")
 weather_df <- weather_df %>%
-  select(-ISO_3DIGIT, -Annual_temp) %>%
+  select(-c(ISO_3DIGIT, Annual_temp))
+weather_df <- weather_df %>%
   select("country", everything())
+weather_df
 
 both <- intersect(df$country, weather_df$country)
 
@@ -46,90 +45,102 @@ weather_df <- weather_df %>%
   filter(country %in% both)
 
 
-## EDA
+# EDA
+
 df <- df %>%
   select(-country) %>%
   t() %>%
-  as.data.frame() %>%
+  data.frame() %>%
   setNames(df$country) %>%
-  mutate_all(as.numeric) %>%
-  mutate(date = as.Date(colnames(df)[2:ncol(df)], "%m/%d/%Y")) %>%
+  mutate(date = as.Date(colnames(df)[2:ncol(df)], format = "%m/%d/%Y")) %>%
+  select(date, everything())
+
+df <- df %>%
   mutate_if(~is.numeric(.x), ~(.x - lag(.x, default = 0)))
-  
+
+#df$China - lag(df$China, default = 0)
+
+ggplot(df, aes(x = date)) +
+  geom_line(aes(y = Germany), color="steelblue", size = 1.5) +
+  geom_line(aes(y = India), color="darkgreen", size = 1.5)
+
+
+ggplot(df, aes(x = date)) +
+  geom_line(aes(y = scale(Germany)), color="steelblue", size = 1.5) +
+  geom_line(aes(y = scale(India)), color="darkgreen", size = 1.5)
+
 
 weather_df <- weather_df %>%
   select(-country) %>%
   t() %>%
   as.data.frame() %>%
   setNames(weather_df$country) %>%
-  mutate_all(as.numeric) %>%
-  mutate(date = as.Date(colnames(weather_df)[2:ncol(weather_df )], "%m/%d/%Y"))
+  mutate(date = colnames(weather_df)[2:ncol(weather_df)]) %>%
+  select(date, everything())
 
-by_month <- df %>%
+
+
+df <- df %>%
   group_by(month = floor_date(date, "month")) %>%
-  summarise_if(is.numeric, sum, na.rm = TRUE) %>%
-  mutate_if(is.numeric, scale)
-by_month <- by_month[4:10,] %>%
-  select(-month) %>%
-  select(sort(current_vars()))
+  summarise_if(is.numeric, sum)
+df <- df[4:10, ] %>%
+  select(-month)
+
 
 weather_df <- weather_df[4:10, ] %>%
-  select(-date) %>%
+  select(-date)
+
+colnames(df) == colnames(weather_df)
+
+df <- df %>%
   select(sort(current_vars()))
 
+weather_df <- weather_df %>%
+  select(sort(current_vars()))
 
-all(colnames(by_month) == colnames(weather_df))
-
-ggplot(df, aes(x =date)) + 
-  geom_line(aes(y = Germany), color="steelblue", size = 1.5) +
-  geom_line(aes(y = India), color="red", size = 1.5)
-
-ggplot(df, aes(x =date)) + 
-  geom_line(aes(y = scale(Germany)), color="steelblue", size = 1.5) +
-  geom_line(aes(y = scale(India)), color="red", size = 1.5)
+all(colnames(df) == colnames(weather_df))
 
 
-resultlist = list()
-for(col in seq_along(by_month)) {
-  resultlist[[col]] <- as.numeric(cor.test(by_month[[col]], weather_df[[col]], method = "pearson")$estimate)
-  names(resultlist)[[col]] <- colnames(by_month)[[col]]
+result <- cor.test(df$Germany, weather_df$Germany)$estimate
+result
+
+resultlist <- list()
+for(col in seq_along(df)) {
+  resultlist[[col]] <-  cor.test(df[[col]], weather_df[[col]])$estimate
 }
 
+resultlist
+
+corr_result <- as.data.frame(cbind(unlist(resultlist), colnames(df))) %>%
+  setNames(c("correlation", "country")) %>%
+  filter(!is.na(correlation))
+
+colnames(latitude_df)[1] <- "country"
 
 
-corr_df <- data.frame(unlist(resultlist), colnames(by_month)) %>%
-  setNames(c("corr", "country"))
-head(corr_df)
-head(latitude_df)
+latitude_df <- latitude_df %>%
+  filter(!duplicated(country))
 
-merged_df <- merge(corr_df, latitude_df, by="country")
-merged_df$category <- ifelse(merged_df$lat > 23.5, "North", ifelse(merged_df$lat <= 23.5 & merged_df$lat >=-23.5, "Equator", "South"))
+merged_df <- merge(corr_result, latitude_df, by="country")
+merged_df$correlation <- as.numeric(merged_df$correlation)
 
+all(!is.na(merged_df$correlation))
+
+class(merged_df$correlation)
+
+mean(merged_df$correlation)
+
+ifelse(merged_df$Lat >23.5, "large", "small")
+
+merged_df$category <- ifelse(merged_df$Lat > 23.5, "North", ifelse(merged_df$Lat <= 23.5 & merged_df$Lat >= -23.5, "Equator", "South"))
 
 merged_df %>%
   group_by(category) %>%
-  summarise(mean_corr = mean(corr, na.rm = TRUE))
+  summarise(mean = mean(correlation, na.rm = TRUE))
 
-## Visualizing data
-library(ggplot2)
-
-ggplot(merged_df, aes(x = reorder(country, -corr), y = corr, color=category)) +
-  geom_bar(stat="identity")
-
-library(highcharter)
-
-
-cor.test(by_month$Afghanistan, weather_df$Afghanistan , method = "pearson")$estimate
-
-cor.test(by_month$Germany, weather_df$Germany, method = "pearson")$estimate
-
-library(ggplot2)
-
-head(merged_df)
-
-ggplot(data = merged_df, aes(x = Lat , y = corr)) + 
-  geom_point(color='red') +
-  geom_smooth(method = "lm", se = FALSE, formula = y~x)
-
-cor.test(merged_df$corr, merged_df$Lat)
+ggplot(data = merged_df, aes(x = reorder(country, correlation), correlation, fill=category)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  xlab(label = "Country") + 
+  ylab(label = "Correlation")
 
