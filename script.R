@@ -1,11 +1,9 @@
 library(tidyverse)
 library(data.table)
-library(openxlsx)
 library(RCurl)
-library(readr)
 library(readxl)
-library(lubridate)
 library(ggplot2)
+library(lubridate)
 library(countrycode)
 
 
@@ -19,6 +17,12 @@ curl::curl_download(weather_data_link, tf)
 
 df <- data.table::fread(cases_global_link)
 
+
+latitude_df <- df %>%
+  select(`Country/Region`, Lat) %>%
+  filter(!duplicated(`Country/Region`)) %>%
+  setNames(c("country", "lat"))
+  
 
 df <- df %>%
   select(-c(`Province/State`, Lat, Long)) %>%
@@ -50,8 +54,7 @@ df <- df %>%
   setNames(df$country) %>%
   mutate_all(as.numeric) %>%
   mutate(date = as.Date(colnames(df)[2:ncol(df)], "%m/%d/%Y")) %>%
-  mutate_if(~is.numeric(.x), ~(.x - lag(.x, default = 0))) %>%
-  mutate_if(is.numeric, scale)
+  mutate_if(~is.numeric(.x), ~(.x - lag(.x, default = 0)))
   
 
 weather_df <- weather_df %>%
@@ -60,8 +63,7 @@ weather_df <- weather_df %>%
   as.data.frame() %>%
   setNames(weather_df$country) %>%
   mutate_all(as.numeric) %>%
-  mutate(date = as.Date(colnames(weather_df)[2:ncol(weather_df )], "%m/%d/%Y")) %>%
-  mutate_if(is.numeric, scale)
+  mutate(date = as.Date(colnames(weather_df)[2:ncol(weather_df )], "%m/%d/%Y"))
 
 by_month <- df %>%
   group_by(month = floor_date(date, "month")) %>%
@@ -76,8 +78,16 @@ weather_df <- weather_df[4:10, ] %>%
   select(sort(current_vars()))
 
 
-
 all(colnames(by_month) == colnames(weather_df))
+
+ggplot(df, aes(x =date)) + 
+  geom_line(aes(y = Germany), color="steelblue", size = 1.5) +
+  geom_line(aes(y = India), color="red", size = 1.5)
+
+ggplot(df, aes(x =date)) + 
+  geom_line(aes(y = scale(Germany)), color="steelblue", size = 1.5) +
+  geom_line(aes(y = scale(India)), color="red", size = 1.5)
+
 
 resultlist = list()
 for(col in seq_along(by_month)) {
@@ -89,39 +99,24 @@ for(col in seq_along(by_month)) {
 
 corr_df <- data.frame(unlist(resultlist), colnames(by_month)) %>%
   setNames(c("corr", "country"))
-corr_df
+head(corr_df)
+head(latitude_df)
 
-### Preserve df for merging
-
-lat_long <- data.table::fread(cases_global_link)
-colnames(lat_long)[2] <- "country"
+merged_df <- merge(corr_df, latitude_df, by="country")
+merged_df$category <- ifelse(merged_df$lat > 23.5, "North", ifelse(merged_df$lat <= 23.5 & merged_df$lat >=-23.5, "Equator", "South"))
 
 
-merged_df <- merge(corr_df, lat_long, by="country") %>%
-  select(country, corr, Lat) %>%
-  filter(Lat < -20)
+merged_df %>%
+  group_by(category) %>%
+  summarise(mean_corr = mean(corr, na.rm = TRUE))
 
-merged_df
-merged_df <- merged_df[!duplicated(merged_df[, 1:2]), ] %>%
-  arrange(desc(corr))
+## Visualizing data
+library(ggplot2)
 
-lapply(merged_df, class)
+ggplot(merged_df, aes(x = reorder(country, -corr), y = corr, color=category)) +
+  geom_bar(stat="identity")
 
 library(highcharter)
-
-
-highcharter::highchart() %>%
-  hc_add_series(data = merged_df$corr, type="line", color="red") %>%
-  hc_add_series(data = merged_df$Lat, type="line", color="blue")
-
-
-highchart() %>%
-  hc_add_series(data = by_month$Germany, type="line", color="red") %>%
-  hc_add_series(data = weather_df$Germany, type="line", color="blue")
-
-highchart() %>%
-  hc_add_series(data = by_month$Argentina, type="line", color="red") %>%
-  hc_add_series(data = weather_df$Argentina, type="line", color="blue")
 
 
 cor.test(by_month$Afghanistan, weather_df$Afghanistan , method = "pearson")$estimate
